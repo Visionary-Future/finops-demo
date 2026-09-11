@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinOps - 多云成本分析平台</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/element-plus@2.5.5/dist/index.css">
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+/* ====== Platform Design Tokens (src/theme/app.scss) ====== */
+:root {
+  --el-color-primary: #003889;
+  --el-color-primary-light-3: #4d74ac;
+  --el-color-primary-light-5: #8099c4;
+  --el-color-primary-light-7: #b3c2dc;
+  --el-color-primary-light-8: #ccd6e8;
+  --el-color-primary-light-9: #e6ebf3;
+  --el-color-primary-dark-2: #002d6e;
+  --next-bg-main-color: #f0f2f5;
+  --next-bg-menuBar: #ffffff;
+  --next-bg-topBar: #ffffff;
+  --next-border-color-light: #e8eaed;
+  --sidebar-width: 220px;
+  --topbar-height: 50px;
+  --tagsview-height: 34px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: Helvetica Neue, Helvetica, PingFang SC, Hiragino Sans GB, Microsoft YaHei, SimSun, sans-serif;
+  font-size: 14px; font-weight: 400; color: #333;
+  background: var(--next-bg-main-color); height: 100vh; overflow: hidden;
+}
+
+/* ====== Layout ====== */
+.app-layout { display: flex; height: 100vh; width: 100%; }
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width); height: 100vh; flex-shrink: 0; z-index: 10;
+  background: var(--next-bg-menuBar);
+  box-shadow: 2px 0 6px rgba(0,21,41,0.01);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sidebar-logo-area {
+  height: 56px; display: flex; align-items: center; gap: 10px;
+  padding: 0 20px; flex-shrink: 0;
+}
+.sidebar-logo-icon {
+  width: 44px; height: 44px; background: var(--el-color-primary);
+  border-radius: 6px; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700; flex-shrink: 0;
+}
+.sidebar-logo-text { font-size: 20px; font-weight: 700; color: #000; white-space: nowrap; }
+
+/* el-menu overrides for sidebar */
+.sidebar .el-menu {
+  border-right: none !important;
+  flex: 1; overflow-y: auto;
+}
+.sidebar .el-menu .el-menu-item {
+  height: 48px; line-height: 48px; font-size: 14px; color: #333;
+  padding-left: 20px !important; margin: 2px 8px; border-radius: 6px;
+}
+.sidebar .el-menu .el-menu-item:hover { background: var(--el-color-primary-light-9); color: #333; }
+.sidebar .el-menu .el-menu-item.is-active {
+  background: var(--el-color-primary-light-9) !important;
+  color: var(--el-color-primary) !important;
+  font-weight: 500;
+}
+.sidebar .el-menu .el-sub-menu .el-sub-menu__title {
+  height: 48px; line-height: 48px; font-size: 14px; color: #333;
+  padding-left: 20px !important; margin: 2px 8px; border-radius: 6px;
+}
+.sidebar .el-menu .el-sub-menu .el-sub-menu__title:hover { background: var(--el-color-primary-light-9); }
+.sidebar .el-menu .el-sub-menu.is-active .el-sub-menu__title { color: var(--el-color-primary); }
+.sidebar .el-menu .el-sub-menu .el-menu .el-menu-item {
+  padding-left: 52px !important; min-width: auto;
+}
+/* Sub-menu collapse */
+.sidebar .el-menu .el-sub-menu .el-menu--inline {
+  display: none;
+}
+.sidebar .el-menu .el-sub-menu.is-opened .el-menu--inline {
+  display: block;
+}
+.sidebar .el-menu .el-sub-menu .el-sub-menu__icon-arrow {
+  transition: transform 0.3s;
+}
+.sidebar .el-menu .el-sub-menu.is-opened .el-sub-menu__icon-arrow {
+  transform: rotate(180deg);
+}
+/* Ensure icon stays inline */
+.el-menu-item svg, .el-sub-menu__title svg { flex-shrink: 0; vertical-align: middle; }
+
+/* Right Panel */
+.right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Top Bar */
+.topbar {
+  height: var(--topbar-height); background: var(--next-bg-topBar);
+  border-bottom: 1px solid var(--next-border-color-light);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; flex-shrink: 0;
+}
+.topbar-left { display: flex; align-items: center; gap: 12px; }
+.collapse-btn {
+  font-size: 16px; cursor: pointer; color: #606266; padding: 4px;
+  border-radius: 4px; display: flex; align-items: center;
+}
+.collapse-btn:hover { background: #f0f2f5; }
+.topbar-right { display: flex; align-items: center; gap: 16px; font-size: 14px; color: #606266; }
+.topbar-user { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.topbar-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--el-color-primary);
+  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+
+/* TagsView */
+.tagsview {
+  height: var(--tagsview-height); background: #fff;
+  border-bottom: 1px solid var(--next-border-color-light);
+  display: flex; align-items: center; padding: 0 8px; flex-shrink: 0;
+  overflow-x: auto;
+}
+.tagsview-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; font-size: 12px; color: #606266;
+  border: 1px solid #e8eaed; border-radius: 4px;
+  margin: 0 2px; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.tagsview-item:hover { color: var(--el-color-primary); }
+.tagsview-item.active {
+  color: #fff; background: var(--el-color-primary); border-color: var(--el-color-primary);
+}
+.tagsview-item-close { font-size: 10px; opacity: 0.5; margin-left: 2px; }
+.tagsview-item.active .tagsview-item-close { opacity: 0.8; }
+
+/* Main Content */
+.main-area { flex: 1; padding: 10px 12px; overflow: hidden; min-height: 0; }
+.content-card {
+  background: #fff; width: 100%; height: 100%;
+  border-radius: 16px; border: 1px solid var(--next-border-color-light);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow-y: auto; overflow-x: hidden;
+}
+.content-card-body { padding: 16px 20px; }
+.section { display: none; }
+.section.active { display: block; }
+
+/* Filter bar */
+.filter-bar {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 16px 20px; background: #fff;
+  border-radius: 10px; border: 1px solid var(--next-border-color-light);
+}
+.filter-bar .el-form-item { margin-bottom: 0; }
+.filter-bar-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* Metric grids */
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+.metric-card .el-card__body { padding: 20px; }
+.metric-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.metric-card-icon {
+  width: 36px; height: 36px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+}
+.metric-card-icon.blue { background: var(--el-color-primary-light-9); color: var(--el-color-primary); }
+.metric-card-icon.green { background: #f0f9eb; color: #67c23a; }
+.metric-card-icon.orange { background: #fdf6ec; color: #e6a23c; }
+.metric-card-icon.red { background: #fef0f0; color: #f56c6c; }
+.metric-card-title { font-size: 13px; color: #606266; }
+.metric-card-value { font-size: 28px; font-weight: 700; color: #333; margin-bottom: 4px; }
+.metric-card-value .currency { font-size: 16px; font-weight: 500; color: #909399; }
+.metric-card-sub { font-size: 12px; color: #909399; }
+.metric-card-sub.up { color: #f56c6c; }
+.metric-card-sub.down { color: #67c23a; }
+
+/* Provider dots */
+.provider-breakdown { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.provider-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #606266; }
+.provider-dot { width: 8px; height: 8px; border-radius: 50%; }
+.provider-dot.alibaba { background: #ff6a00; }
+.provider-dot.azure { background: #0078d4; }
+.provider-dot.k8s { background: #326ce5; }
+.provider-val { font-weight: 500; color: #333; }
+
+/* Charts */
+.charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+.charts-row.col2 { grid-template-columns: 1fr 1fr; }
+.charts-row.col1 { grid-template-columns: 1fr; }
+.chart-box { width: 100%; }
+.chart-box.h300 { height: 300px; }
+.chart-box.h320 { height: 320px; }
+.chart-box.h340 { height: 340px; }
+.chart-box.h380 { height: 380px; }
+
+/* Card header pattern from platform */
+.card-header-row {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+}
+.card-header-left .card-header-title { font-size: 14px; font-weight: 600; }
+.card-header-left .card-header-meta { display: flex; gap: 16px; margin-top: 4px; font-size: 12px; color: #909399; }
+
+/* Summary grid inside cards */
+.summary-grid { display: flex; gap: 24px; margin-bottom: 16px; }
+.summary-grid .summary-cell { flex: 1; }
+.summary-grid .summary-cell .s-label { font-size: 12px; color: #909399; margin-bottom: 4px; }
+.summary-grid .summary-cell .s-val { font-size: 18px; font-weight: 700; color: #333; }
+.summary-grid .summary-cell .s-val.primary { color: var(--el-color-primary); }
+.summary-grid .summary-cell .s-sub { font-size: 12px; color: #909399; }
+
+/* el-table overrides */
+.el-table thead th.el-table__cell {
+  background: rgb(237,237,237) !important; color: #606266 !important; font-weight: 500; font-size: 14px;
+}
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgb(226,232,238) !important;
+}
+
+@media (max-width: 1200px) {
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .charts-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .metrics-grid { grid-template-columns: 1fr; }
+  .main-area { padding: 6px; }
+  .content-card-body { padding: 12px; }
+}
+
+.content-card::-webkit-scrollbar { width: 6px; }
+.content-card::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+.content-card::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <!-- ====== SIDEBAR with el-menu ====== -->
+  <aside class="sidebar">
+    <ul class="el-menu" role="menubar">
+      <div class="sidebar-logo-area" style="height:56px;display:flex;align-items:center;padding:0 20px;flex-shrink:0;">
+        <span style="font-size:20px;font-weight:700;color:#000;letter-spacing:0.5px;">FinOps</span>
+      </div>
+      <div style="height:1px;background:var(--next-border-color-light);margin:0 20px 8px;"></div>
+      <!-- 成本分析 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg><span>成本分析</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item is-active" role="menuitem" data-section="dashboard"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>总览仪表盘</li>
+          <li class="el-menu-item" role="menuitem" data-section="billing"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm-1 2l5 5h-5V4zM8 14h8v2H8v-2zm0-4h8v2H8v-2zm0 8h5v2H8v-2z"/></svg>账单分析</li>
+          <li class="el-menu-item" role="menuitem" data-section="monthly"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V10h14v9zm0-11H5V5h14v3z"/></svg>月度账单</li>
+          <li class="el-menu-item" role="menuitem" data-section="prediction"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/></svg>成本预测</li>
+          <li class="el-menu-item" role="menuitem" data-section="optimization"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>成本优化</li>
+          <li class="el-menu-item" role="menuitem" data-section="budget"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M21 18v1c0 1.1-.9 2-2 2H5c-1.11 0-2-.9-2-2V5c0-1.1.89-2 2-2h14c1.1 0 2 .9 2 2v1h-9c-1.11 0-2 .9-2 2v8c0 1.1.89 2 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>预算管理</li>
+        </ul>
+      </li>
+      <!-- 应用管理 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg><span>应用管理</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item" role="menuitem" data-section="app"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>应用总览</li>
+          <li class="el-menu-item" role="menuitem" data-section="product"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>产品管理</li>
+        </ul>
+      </li>
+      <!-- 容器成本 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zm0-10H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm0-10c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg><span>容器成本</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item" role="menuitem" data-section="k8s"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M20 13H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1v-6c0-.55-.45-1-1-1zM7 19c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM20 3H4c-.55 0-1 .45-1 1v6c0 .55.45 1 1 1h16c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zM7 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>K8s 成本分析</li>
+        </ul>
+      </li>
+      <!-- 云资源管理 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg><span>云资源管理</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item" role="menuitem" data-section="cloudAccount"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>云账号管理</li>
+          <li class="el-menu-item" role="menuitem" data-section="cloudSecret"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm3 11c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>云凭证管理</li>
+        </ul>
+      </li>
+      <!-- 智能运维 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41L9.25 5.35c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg><span>智能运维</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item" role="menuitem" data-section="alert"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>告警管理</li>
+          <li class="el-menu-item" role="menuitem" data-section="autoTagging"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>自动标签规则</li>
+        </ul>
+      </li>
+      <!-- 系统管理 -->
+      <li class="el-sub-menu" role="menuitem">
+        <div class="el-sub-menu__title"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41L9.25 5.35c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg><span>系统管理</span><i class="el-sub-menu__icon-arrow el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></div>
+        <ul class="el-menu el-menu--inline" role="menu" style="--el-menu-level:0;">
+          <li class="el-menu-item" role="menuitem" data-section="user"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>用户管理</li>
+          <li class="el-menu-item" role="menuitem" data-section="role"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M9 12c1.93 0 3.5-1.57 3.5-3.5S10.93 5 9 5 5.5 6.57 5.5 8.5 7.07 12 9 12zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-1.5c0-2.33-4.67-3.5-7-3.5zm6-1.5c0-.68.12-1.32.34-1.91.6-.1 1.16-.35 1.66-.66 1.37.7 2.5 1.57 3 2.57v-1.5c0-2.33-4.67-3.5-7-3.5-.26 0-.5.01-.75.03C13.13 7.96 14 9.48 14 12h1z"/></svg>角色管理</li>
+          <li class="el-menu-item" role="menuitem" data-section="menu"><svg viewBox="0 0 24 24" width="1em" height="1em" style="margin-right:8px;"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>菜单管理</li>
+        </ul>
+      </li>
+    </ul>
+  </aside>
+
+  <!-- ====== RIGHT PANEL ====== -->
+  <div class="right-panel">
+
+    <!-- Top Bar with el-breadcrumb -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="collapse-btn">
+          <svg viewBox="0 0 1024 1024" width="16" height="16"><path fill="currentColor" d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM142.4 642.1L298.7 519a8.84 8.84 0 0 0 0-13.9L142.4 381.9c-5.8-4.6-14.4-.5-14.4 6.9v246.3a8.9 8.9 0 0 0 14.4 7z"></path></svg>
+        </span>
+        <div class="el-breadcrumb" style="font-size:14px;">
+          <span class="el-breadcrumb__item"><span class="el-breadcrumb__inner" style="color:#909399;">首页</span><span class="el-breadcrumb__separator" style="margin:0 8px;color:#c0c4cc;">/</span></span>
+          <span class="el-breadcrumb__item"><span class="el-breadcrumb__inner" id="breadcrumb-title" style="color:#333;font-weight:500;">总览仪表盘</span></span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span style="color:#909399;font-size:13px;">2026年9月</span>
+        <div class="topbar-user">
+          <div class="topbar-avatar">S</div>
+          <span style="color:#333;">SuperAdmin</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- TagsView tabs -->
+    <div class="tagsview">
+      <div class="tagsview-item active">总览仪表盘<span class="tagsview-item-close">×</span></div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-area">
+      <div class="content-card">
+        <div class="content-card-body">
+
+          <!-- ====== DASHBOARD ====== -->
+          <section class="section active" id="section-dashboard">
+
+            <div class="metrics-grid">
+              <div class="el-card metric-card">
+                <div class="el-card__body">
+                  <div class="metric-card-header">
+                    <div class="metric-card-icon blue"></div>
+                    <div class="metric-card-title">总消费额</div>
+                  </div>
+                  <div class="metric-card-value"><span class="currency">¥</span>2,847,692</div>
+                  <div class="provider-breakdown">
+                    <div class="provider-item"><span class="provider-dot alibaba"></span>阿里云<span class="provider-val">¥1,520,000</span></div>
+                    <div class="provider-item"><span class="provider-dot azure"></span>Azure<span class="provider-val">¥1,010,000</span></div>
+                    <div class="provider-item"><span class="provider-dot k8s"></span>K8s<span class="provider-val">¥420,000</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="el-card metric-card">
+                <div class="el-card__body">
+                  <div class="metric-card-header">
+                    <div class="metric-card-icon orange"></div>
+                    <div class="metric-card-title">月度变化</div>
+                  </div>
+                  <div class="metric-card-value"><span class="currency">¥</span>156,230</div>
+                  <div class="metric-card-sub up">较上月增加 5.8%</div>
+                  <div class="provider-breakdown">
+                    <div class="provider-item"><span class="provider-dot alibaba"></span>阿里云<span class="provider-val" style="color:#f56c6c">+¥70,000</span></div>
+                    <div class="provider-item"><span class="provider-dot azure"></span>Azure<span class="provider-val" style="color:#f56c6c">+¥30,000</span></div>
+                    <div class="provider-item"><span class="provider-dot k8s"></span>K8s<span class="provider-val" style="color:#f56c6c">+¥56,230</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="el-card metric-card">
+                <div class="el-card__body">
+                  <div class="metric-card-header">
+                    <div class="metric-card-icon green"></div>
+                    <div class="metric-card-title">环比趋势</div>
+                  </div>
+                  <div class="metric-card-value">+5.8<span style="font-size:16px">%</span></div>
+                  <div class="metric-card-sub down">较前月 8.2% 有所放缓</div>
+                </div>
+              </div>
+              <div class="el-card metric-card">
+                <div class="el-card__body">
+                  <div class="metric-card-header">
+                    <div class="metric-card-icon red"></div>
+                    <div class="metric-card-title">优化建议</div>
+                  </div>
+                  <div class="metric-card-value"><span class="currency">¥</span>320,500</div>
+                  <div class="metric-card-sub">潜在可节省成本</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="charts-row">
+              <div class="el-card">
+                <div class="el-card__header">
+                  <div class="card-header-row">
+                    <div class="card-header-left"><span class="card-header-title">月度成本趋势（近12个月）</span></div>
+                  </div>
+                </div>
+                <div class="el-card__body"><div class="chart-box h340" id="chart-trend"></div></div>
+              </div>
+              <div class="el-card">
+                <div class="el-card__header">
+                  <div class="card-header-row">
+                    <div class="card-header-left"><span class="card-header-title">云服务商成本分布</span></div>
+                  </div>
+                </div>
+                <div class="el-card__body"><div class="chart-box h340" id="chart-provider-pie"></div></div>
+              </div>
+            </div>
+
+            <div class="charts-row col1" style="margin-bottom:0;">
+              <div class="el-card">
+                <div class="el-card__header">
+                  <div class="card-header-row">
+                    <div class="card-header-left">
+                      <div class="card-header-title">当月最新应用成本 TOP10</div>
+                      <div class="card-header-meta"><span>账期：2026-09</span><span>刷新日期：2026-09-11</span></div>
+                    </div>
+                    <div><button class="el-button el-button--small el-button--default"><span>刷新</span></button></div>
+                  </div>
+                </div>
+                <div class="el-card__body">
+                  <div class="summary-grid">
+                    <div class="summary-cell"><div class="s-label">TOP1 应用</div><div class="s-val primary">订单系统</div><div class="s-sub">¥385,000</div></div>
+                    <div class="summary-cell"><div class="s-label">TOP10 总额</div><div class="s-val">¥2,096,000</div><div class="s-sub">10 个应用</div></div>
+                    <div class="summary-cell"><div class="s-label">阿里云合计</div><div class="s-val">¥1,265,000</div><div class="s-sub">占 TOP10 总额 60.4%</div></div>
+                  </div>
+                  <div class="chart-box h300" id="chart-top10"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ====== BILLING ====== -->
+          <section class="section" id="section-billing">
+            <div class="filter-bar">
+              <div class="el-form-item"><label class="el-form-item__label" style="font-size:14px;color:#606266;">合同期</label><div class="el-form-item__content"><div class="el-select"><div class="el-input el-input--suffix"><input class="el-input__inner" value="2026-2027" readonly style="width:140px;"><span class="el-input__suffix"><span class="el-input__suffix-inner"><i class="el-select__caret el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></span></span></div></div></div></div>
+              <div class="filter-bar-actions">
+                <button class="el-button el-button--primary"><span>查询</span></button>
+                <button class="el-button el-button--default"><span>刷新</span></button>
+              </div>
+            </div>
+
+            <div class="charts-row col1">
+              <div class="el-card">
+                <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">月度账单 - 云服务商消费趋势</span></div></div></div>
+                <div class="el-card__body"><div class="chart-box h320" id="chart-billing-trend"></div></div>
+              </div>
+            </div>
+            <div class="charts-row col2">
+              <div class="el-card">
+                <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">阿里云产品分布</span></div></div></div>
+                <div class="el-card__body"><div class="chart-box h300" id="chart-alibaba-products"></div></div>
+              </div>
+              <div class="el-card">
+                <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">Azure 产品分布</span></div></div></div>
+                <div class="el-card__body"><div class="chart-box h300" id="chart-azure-products"></div></div>
+              </div>
+            </div>
+
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">本月产品消费明细</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">产品</div></th><th class="el-table__cell"><div class="cell">消费金额</div></th><th class="el-table__cell"><div class="cell">占比</div></th><th class="el-table__cell"><div class="cell">环比变化</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">ECS 云服务器</div></td><td class="el-table__cell"><div class="cell">¥852,340</div></td><td class="el-table__cell"><div class="cell">29.9%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+12.3%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">Virtual Machines</div></td><td class="el-table__cell"><div class="cell">¥623,180</div></td><td class="el-table__cell"><div class="cell">21.9%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+8.7%</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">RDS 数据库</div></td><td class="el-table__cell"><div class="cell">¥415,200</div></td><td class="el-table__cell"><div class="cell">14.6%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">-3.2%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">K8s</div></td><td class="el-table__cell"><div class="cell">ACK 容器服务</div></td><td class="el-table__cell"><div class="cell">¥368,500</div></td><td class="el-table__cell"><div class="cell">12.9%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+15.1%</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">SQL Database</div></td><td class="el-table__cell"><div class="cell">¥245,630</div></td><td class="el-table__cell"><div class="cell">8.6%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">-1.5%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">OSS 对象存储</div></td><td class="el-table__cell"><div class="cell">¥198,420</div></td><td class="el-table__cell"><div class="cell">7.0%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+4.8%</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">Storage Account</div></td><td class="el-table__cell"><div class="cell">¥144,422</div></td><td class="el-table__cell"><div class="cell">5.1%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">-6.2%</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ====== MONTHLY BILLING ====== -->
+          <section class="section" id="section-monthly">
+            <div class="filter-bar">
+              <div class="el-form-item"><label class="el-form-item__label" style="font-size:14px;color:#606266;">账期</label><div class="el-form-item__content"><div class="el-select"><div class="el-input el-input--suffix"><input class="el-input__inner" value="2026-09" readonly style="width:140px;"><span class="el-input__suffix"><span class="el-input__suffix-inner"><i class="el-select__caret el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></span></span></div></div></div></div>
+              <div class="filter-bar-actions"><button class="el-button el-button--primary"><span>查询</span></button></div>
+            </div>
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">月度账单明细</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">应用名称</div></th><th class="el-table__cell"><div class="cell">阿里云</div></th><th class="el-table__cell"><div class="cell">Azure</div></th><th class="el-table__cell"><div class="cell">K8s</div></th><th class="el-table__cell"><div class="cell">合计</div></th><th class="el-table__cell"><div class="cell">环比</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">订单系统</div></td><td class="el-table__cell"><div class="cell">¥225,000</div></td><td class="el-table__cell"><div class="cell">¥120,000</div></td><td class="el-table__cell"><div class="cell">¥40,000</div></td><td class="el-table__cell"><div class="cell">¥385,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+8.5%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">用户中心</div></td><td class="el-table__cell"><div class="cell">¥180,000</div></td><td class="el-table__cell"><div class="cell">¥98,000</div></td><td class="el-table__cell"><div class="cell">¥34,000</div></td><td class="el-table__cell"><div class="cell">¥312,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">-2.1%</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">支付网关</div></td><td class="el-table__cell"><div class="cell">¥145,000</div></td><td class="el-table__cell"><div class="cell">¥88,000</div></td><td class="el-table__cell"><div class="cell">¥35,000</div></td><td class="el-table__cell"><div class="cell">¥268,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+5.3%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">物流平台</div></td><td class="el-table__cell"><div class="cell">¥136,000</div></td><td class="el-table__cell"><div class="cell">¥72,000</div></td><td class="el-table__cell"><div class="cell">¥37,000</div></td><td class="el-table__cell"><div class="cell">¥245,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+3.2%</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">营销引擎</div></td><td class="el-table__cell"><div class="cell">¥105,000</div></td><td class="el-table__cell"><div class="cell">¥58,000</div></td><td class="el-table__cell"><div class="cell">¥35,000</div></td><td class="el-table__cell"><div class="cell">¥198,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">-1.8%</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">数据分析</div></td><td class="el-table__cell"><div class="cell">¥95,000</div></td><td class="el-table__cell"><div class="cell">¥52,000</div></td><td class="el-table__cell"><div class="cell">¥28,000</div></td><td class="el-table__cell"><div class="cell">¥175,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">+12.5%</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ====== PREDICTION ====== -->
+          <section class="section" id="section-prediction">
+            <div class="metrics-grid">
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon blue"></div><div class="metric-card-title">本月预测总成本</div></div><div class="metric-card-value"><span class="currency">¥</span>3,125,000</div><div class="metric-card-sub">基于当前消费趋势推算</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon green"></div><div class="metric-card-title">预测置信度</div></div><div class="metric-card-value">92<span style="font-size:16px">%</span></div><div class="metric-card-sub">近6个月准确度均值 92.3%</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon orange"></div><div class="metric-card-title">超预算风险</div></div><div class="metric-card-value" style="color:#e6a23c;">中等</div><div class="metric-card-sub">预计超出预算 ¥125,000</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon red"></div><div class="metric-card-title">预计月末成本</div></div><div class="metric-card-value"><span class="currency">¥</span>3,380,000</div><div class="metric-card-sub up">较上月增长 6.2%</div></div></div>
+            </div>
+            <div class="charts-row col1">
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">成本预测 vs 实际（近6个月 + 未来3个月）</span></div></div></div><div class="el-card__body"><div class="chart-box h380" id="chart-prediction"></div></div></div>
+            </div>
+            <div class="charts-row col2" style="margin-bottom:0;">
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">多云预测趋势</span></div></div></div><div class="el-card__body"><div class="chart-box h300" id="chart-multi-prediction"></div></div></div>
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">预测准确度趋势</span></div></div></div><div class="el-card__body"><div class="chart-box h300" id="chart-accuracy"></div></div></div>
+            </div>
+          </section>
+
+          <!-- ====== K8S ====== -->
+          <section class="section" id="section-k8s">
+            <div class="metrics-grid">
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon blue"><span class="provider-dot k8s" style="width:14px;height:14px;"></span></div><div class="metric-card-title">K8s 总成本</div></div><div class="metric-card-value"><span class="currency">¥</span>486,300</div><div class="metric-card-sub">2026年9月</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon green"></div><div class="metric-card-title">集群数量</div></div><div class="metric-card-value">12<span style="font-size:16px"> 个</span></div><div class="metric-card-sub">生产 8 个 / 测试 4 个</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon orange"></div><div class="metric-card-title">命名空间</div></div><div class="metric-card-value">86<span style="font-size:16px"> 个</span></div><div class="metric-card-sub">活跃命名空间</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon red"></div><div class="metric-card-title">资源优化建议</div></div><div class="metric-card-value"><span class="currency">¥</span>98,500</div><div class="metric-card-sub">可优化资源成本</div></div></div>
+            </div>
+            <div class="charts-row col1">
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">各集群月度成本趋势</span></div></div></div><div class="el-card__body"><div class="chart-box h340" id="chart-cluster-trend"></div></div></div>
+            </div>
+            <div class="charts-row col2" style="margin-bottom:0;">
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">命名空间成本 TOP10</span></div></div></div><div class="el-card__body"><div class="chart-box h300" id="chart-namespace"></div></div></div>
+              <div class="el-card"><div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">资源类型成本分布</span></div></div></div><div class="el-card__body"><div class="chart-box h300" id="chart-resource-type"></div></div></div>
+            </div>
+          </section>
+
+          <!-- ====== OTHER SECTIONS (same structure as before) ====== -->
+          <section class="section" id="section-optimization">
+            <div class="metrics-grid">
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon blue"></div><div class="metric-card-title">总优化机会</div></div><div class="metric-card-value"><span class="currency">¥</span>320,500</div><div class="metric-card-sub">潜在可节省月度成本</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon orange"></div><div class="metric-card-title">闲置资源</div></div><div class="metric-card-value"><span class="currency">¥</span>185,200</div><div class="metric-card-sub">未使用或低利用率资源</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon green"></div><div class="metric-card-title">规格优化</div></div><div class="metric-card-value"><span class="currency">¥</span>98,300</div><div class="metric-card-sub">资源配置超出实际需求</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon red"></div><div class="metric-card-title">存储优化</div></div><div class="metric-card-value"><span class="currency">¥</span>37,000</div><div class="metric-card-sub">存储层级与生命周期优化</div></div></div>
+            </div>
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">优化建议列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">资源ID</div></th><th class="el-table__cell"><div class="cell">类型</div></th><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">建议类型</div></th><th class="el-table__cell"><div class="cell">预估月节省</div></th><th class="el-table__cell"><div class="cell">优先级</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">i-bp1xxx001</div></td><td class="el-table__cell"><div class="cell">ECS</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">释放闲置实例</div></td><td class="el-table__cell"><div class="cell">¥45,200</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">高</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">vm-prod-042</div></td><td class="el-table__cell"><div class="cell">VM</div></td><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">降配至标准型</div></td><td class="el-table__cell"><div class="cell">¥32,800</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--warning el-tag--light">中</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">oss-bucket-logs</div></td><td class="el-table__cell"><div class="cell">OSS</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">迁移至低频存储</div></td><td class="el-table__cell"><div class="cell">¥28,500</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--warning el-tag--light">中</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-budget">
+            <div class="metrics-grid">
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon blue"></div><div class="metric-card-title">月度预算总额</div></div><div class="metric-card-value"><span class="currency">¥</span>3,000,000</div><div class="metric-card-sub">2026年9月</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon orange"></div><div class="metric-card-title">当前消费</div></div><div class="metric-card-value"><span class="currency">¥</span>2,847,692</div><div class="metric-card-sub up">预算使用率 94.9%</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon green"></div><div class="metric-card-title">剩余预算</div></div><div class="metric-card-value"><span class="currency">¥</span>152,308</div><div class="metric-card-sub">剩余 5.1%</div></div></div>
+              <div class="el-card metric-card"><div class="el-card__body"><div class="metric-card-header"><div class="metric-card-icon red"></div><div class="metric-card-title">超预算预警</div></div><div class="metric-card-value" style="color:#e6a23c;">2 项</div><div class="metric-card-sub">阿里云 / Azure 接近预算上限</div></div></div>
+            </div>
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">预算执行明细</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">预算金额</div></th><th class="el-table__cell"><div class="cell">实际消费</div></th><th class="el-table__cell"><div class="cell">使用率</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">¥1,600,000</div></td><td class="el-table__cell"><div class="cell">¥1,520,000</div></td><td class="el-table__cell"><div class="cell">95.0%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--warning el-tag--light">预警</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">¥1,100,000</div></td><td class="el-table__cell"><div class="cell">¥1,010,000</div></td><td class="el-table__cell"><div class="cell">91.8%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--warning el-tag--light">预警</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">K8s</div></td><td class="el-table__cell"><div class="cell">¥300,000</div></td><td class="el-table__cell"><div class="cell">¥420,000</div></td><td class="el-table__cell"><div class="cell">140.0%</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--danger el-tag--light">超预算</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-app">
+            <div class="filter-bar">
+              <div class="el-form-item"><label class="el-form-item__label" style="font-size:14px;color:#606266;">应用状态</label><div class="el-form-item__content"><div class="el-select"><div class="el-input el-input--suffix"><input class="el-input__inner" value="全部" readonly style="width:140px;"><span class="el-input__suffix"><span class="el-input__suffix-inner"><i class="el-select__caret el-icon"><svg viewBox="0 0 1024 1024" width="1em" height="1em"><path fill="currentColor" d="M831.872 340.864 512 652.672 192.128 340.864a30.592 30.592 0 0 0-42.752 0 29.12 29.12 0 0 0 0 41.6L489.664 714.24a32 32 0 0 0 44.672 0l340.288-331.712a29.12 29.12 0 0 0 0-41.728 30.592 30.592 0 0 0-42.752 0z"></path></svg></i></span></span></div></div></div></div>
+              <div class="filter-bar-actions"><button class="el-button el-button--primary"><span>查询</span></button></div>
+            </div>
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">应用列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">应用名称</div></th><th class="el-table__cell"><div class="cell">所属部门</div></th><th class="el-table__cell"><div class="cell">负责人</div></th><th class="el-table__cell"><div class="cell">月度成本</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">订单系统</div></td><td class="el-table__cell"><div class="cell">电商事业部</div></td><td class="el-table__cell"><div class="cell">张三</div></td><td class="el-table__cell"><div class="cell">¥385,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">运行中</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">用户中心</div></td><td class="el-table__cell"><div class="cell">平台事业部</div></td><td class="el-table__cell"><div class="cell">李四</div></td><td class="el-table__cell"><div class="cell">¥312,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">运行中</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">支付网关</div></td><td class="el-table__cell"><div class="cell">支付事业部</div></td><td class="el-table__cell"><div class="cell">王五</div></td><td class="el-table__cell"><div class="cell">¥268,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">运行中</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-product">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">产品列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">产品名称</div></th><th class="el-table__cell"><div class="cell">类型</div></th><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">关联应用</div></th><th class="el-table__cell"><div class="cell">月度成本</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">ECS 云服务器</div></td><td class="el-table__cell"><div class="cell">计算</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">24</div></td><td class="el-table__cell"><div class="cell">¥852,340</div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">Virtual Machines</div></td><td class="el-table__cell"><div class="cell">计算</div></td><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">18</div></td><td class="el-table__cell"><div class="cell">¥623,180</div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">RDS 数据库</div></td><td class="el-table__cell"><div class="cell">数据库</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">15</div></td><td class="el-table__cell"><div class="cell">¥415,200</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-cloudAccount">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">云账号列表</span></div><div><button class="el-button el-button--primary el-button--small"><span>添加账号</span></button></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">账号名称</div></th><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">账号ID</div></th><th class="el-table__cell"><div class="cell">关联应用</div></th><th class="el-table__cell"><div class="cell">本月消费</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">生产主账号</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">aliyun-prod-001</div></td><td class="el-table__cell"><div class="cell">32</div></td><td class="el-table__cell"><div class="cell">¥1,200,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">Azure 生产订阅</div></td><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">sub-prod-azure</div></td><td class="el-table__cell"><div class="cell">28</div></td><td class="el-table__cell"><div class="cell">¥1,010,000</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-cloudSecret">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">云凭证列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">凭证名称</div></th><th class="el-table__cell"><div class="cell">云服务商</div></th><th class="el-table__cell"><div class="cell">关联账号</div></th><th class="el-table__cell"><div class="cell">创建时间</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">AK-生产只读</div></td><td class="el-table__cell"><div class="cell">阿里云</div></td><td class="el-table__cell"><div class="cell">aliyun-prod-001</div></td><td class="el-table__cell"><div class="cell">2026-06-15</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">有效</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">SP-Azure-Billing</div></td><td class="el-table__cell"><div class="cell">Azure</div></td><td class="el-table__cell"><div class="cell">sub-prod-azure</div></td><td class="el-table__cell"><div class="cell">2026-05-20</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">有效</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-alert">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">告警规则列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">规则名称</div></th><th class="el-table__cell"><div class="cell">监控对象</div></th><th class="el-table__cell"><div class="cell">告警条件</div></th><th class="el-table__cell"><div class="cell">通知方式</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">月度总费用超预算</div></td><td class="el-table__cell"><div class="cell">总消费额</div></td><td class="el-table__cell"><div class="cell">当月消费 > 预算95%</div></td><td class="el-table__cell"><div class="cell">邮件/钉钉</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">启用</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">单日费用异常增长</div></td><td class="el-table__cell"><div class="cell">日消费额</div></td><td class="el-table__cell"><div class="cell">日环比 > 50%</div></td><td class="el-table__cell"><div class="cell">邮件</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">启用</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-autoTagging">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">自动标签规则</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">规则名称</div></th><th class="el-table__cell"><div class="cell">匹配条件</div></th><th class="el-table__cell"><div class="cell">标签键</div></th><th class="el-table__cell"><div class="cell">标签值</div></th><th class="el-table__cell"><div class="cell">范围</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">按应用名打标签</div></td><td class="el-table__cell"><div class="cell">资源名含应用标识</div></td><td class="el-table__cell"><div class="cell">app</div></td><td class="el-table__cell"><div class="cell">自动匹配</div></td><td class="el-table__cell"><div class="cell">全部</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">启用</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">生产环境标签</div></td><td class="el-table__cell"><div class="cell">资源名含 'prod'</div></td><td class="el-table__cell"><div class="cell">env</div></td><td class="el-table__cell"><div class="cell">production</div></td><td class="el-table__cell"><div class="cell">全部</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">启用</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-user">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">用户列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">用户名</div></th><th class="el-table__cell"><div class="cell">姓名</div></th><th class="el-table__cell"><div class="cell">角色</div></th><th class="el-table__cell"><div class="cell">邮箱</div></th><th class="el-table__cell"><div class="cell">创建时间</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">superadmin</div></td><td class="el-table__cell"><div class="cell">超级管理员</div></td><td class="el-table__cell"><div class="cell">超级管理员</div></td><td class="el-table__cell"><div class="cell">admin@finops.com</div></td><td class="el-table__cell"><div class="cell">2025-01-15</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">zhangsan</div></td><td class="el-table__cell"><div class="cell">张三</div></td><td class="el-table__cell"><div class="cell">业务管理员</div></td><td class="el-table__cell"><div class="cell">zhangsan@finops.com</div></td><td class="el-table__cell"><div class="cell">2025-03-20</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-role">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">角色列表</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">角色名称</div></th><th class="el-table__cell"><div class="cell">角色标识</div></th><th class="el-table__cell"><div class="cell">用户数</div></th><th class="el-table__cell"><div class="cell">权限范围</div></th><th class="el-table__cell"><div class="cell">创建时间</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">超级管理员</div></td><td class="el-table__cell"><div class="cell">admin</div></td><td class="el-table__cell"><div class="cell">1</div></td><td class="el-table__cell"><div class="cell">全部权限</div></td><td class="el-table__cell"><div class="cell">2025-01-15</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">业务管理员</div></td><td class="el-table__cell"><div class="cell">business_admin</div></td><td class="el-table__cell"><div class="cell">5</div></td><td class="el-table__cell"><div class="cell">成本分析/账单</div></td><td class="el-table__cell"><div class="cell">2025-02-01</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">正常</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="section-menu">
+            <div class="el-card" style="margin-bottom:0;">
+              <div class="el-card__header"><div class="card-header-row"><div class="card-header-left"><span class="card-header-title">菜单管理</span></div></div></div>
+              <div class="el-card__body" style="padding:0;">
+                <table class="el-table el-table--fit el-table--striped el-table--enable-row-hover" style="width:100%;">
+                  <thead><tr><th class="el-table__cell"><div class="cell">菜单名称</div></th><th class="el-table__cell"><div class="cell">类型</div></th><th class="el-table__cell"><div class="cell">路由路径</div></th><th class="el-table__cell"><div class="cell">排序</div></th><th class="el-table__cell"><div class="cell">状态</div></th></tr></thead>
+                  <tbody>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">成本分析</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--info el-tag--light">目录</span></div></td><td class="el-table__cell"><div class="cell">/cost</div></td><td class="el-table__cell"><div class="cell">1</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">显示</span></div></td></tr>
+                    <tr><td class="el-table__cell"><div class="cell">总览仪表盘</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--warning el-tag--light">菜单</span></div></td><td class="el-table__cell"><div class="cell">/dashboard</div></td><td class="el-table__cell"><div class="cell">1</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">显示</span></div></td></tr>
+                    <tr class="el-table__row--striped"><td class="el-table__cell"><div class="cell">系统管理</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--info el-tag--light">目录</span></div></td><td class="el-table__cell"><div class="cell">/system</div></td><td class="el-table__cell"><div class="cell">5</div></td><td class="el-table__cell"><div class="cell"><span class="el-tag el-tag--success el-tag--light">显示</span></div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// MOCK DATA
+const monthLabels = ['10月','11月','12月','1月','2月','3月','4月','5月','6月','7月','8月','9月'];
+const trendData = {
+  alibaba: [980000,1020000,1150000,1080000,950000,1200000,1350000,1280000,1420000,1380000,1450000,1520000],
+  azure:   [720000,750000,810000,780000,690000,850000,920000,880000,960000,910000,980000,1010000],
+  k8s:     [280000,290000,310000,300000,260000,330000,360000,350000,380000,370000,400000,420000],
+};
+
+const C = {
+  primary:'#003889', primaryLight:'#4d74ac',
+  alibaba:'#ff6a00', azure:'#0078d4', k8s:'#326ce5',
+  success:'#67c23a', warning:'#e6a23c', danger:'#f56c6c',
+};
+
+function initChart(id) {
+  const d = document.getElementById(id);
+  if (!d) return null;
+  const c = echarts.init(d);
+  new ResizeObserver(() => c.resize()).observe(d);
+  return c;
+}
+function tf(params) {
+  if (!Array.isArray(params)) params = [params];
+  return params.map(p => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0"><span style="width:10px;height:10px;border-radius:50%;background:${p.color}"></span>${p.seriesName}: <strong>¥${p.value.toLocaleString()}</strong></div>`).join('');
+}
+const gridOpts = { left:55,right:15,top:15,bottom:40 };
+const xOpts = { type:'category',data:monthLabels,axisLabel:{color:'#909399',fontSize:11},axisLine:{lineStyle:{color:'#e8eaed'}},axisTick:{show:false} };
+const yOpts = { type:'value',axisLabel:{formatter:v=>(v/10000).toFixed(0)+'万',color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}} };
+
+// DASHBOARD
+(function(){
+  const c1 = initChart('chart-trend');
+  if(c1) c1.setOption({ tooltip:{trigger:'axis',formatter:tf}, legend:{data:['阿里云','Azure','K8s'],bottom:0,textStyle:{color:'#606266'}}, grid:gridOpts, xAxis:xOpts, yAxis:yOpts,
+    series:[
+      {name:'阿里云',type:'bar',stack:'total',data:trendData.alibaba,itemStyle:{color:C.alibaba},emphasis:{focus:'series'},barWidth:'50%'},
+      {name:'Azure',type:'bar',stack:'total',data:trendData.azure,itemStyle:{color:C.azure},emphasis:{focus:'series'},barWidth:'50%'},
+      {name:'K8s',type:'bar',stack:'total',data:trendData.k8s,itemStyle:{color:C.k8s},emphasis:{focus:'series'},barWidth:'50%'},
+    ]});
+  const c2 = initChart('chart-provider-pie');
+  if(c2) c2.setOption({ tooltip:{trigger:'item',formatter:'{b}: ¥{c} ({d}%)'}, legend:{bottom:0,textStyle:{color:'#606266'}},
+    series:[{type:'pie',radius:['48%','78%'],center:['50%','47%'],itemStyle:{borderRadius:6,borderColor:'#fff',borderWidth:3},label:{color:'#606266',formatter:'{b}\n{d}%'},
+      data:[
+        {value:trendData.alibaba[11],name:'阿里云',itemStyle:{color:C.alibaba}},
+        {value:trendData.azure[11],name:'Azure',itemStyle:{color:C.azure}},
+        {value:trendData.k8s[11],name:'K8s',itemStyle:{color:C.k8s}},
+      ]}]});
+  const apps = ['订单系统','用户中心','支付网关','物流平台','营销引擎','数据分析','消息推送','商品管理','客服系统','风控平台'];
+  const vals = [385000,312000,268000,245000,198000,175000,152000,138000,125000,98000];
+  const c3 = initChart('chart-top10');
+  if(c3) c3.setOption({ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>`${p[0].name}: <strong>¥${p[0].value.toLocaleString()}</strong>`},
+    grid:{left:100,right:60,top:10,bottom:20}, xAxis:{type:'value',axisLabel:{formatter:v=>(v/10000).toFixed(0)+'万',color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    yAxis:{type:'category',data:apps.slice().reverse(),inverse:true,axisLabel:{fontSize:12,color:'#606266'},axisLine:{show:false},axisTick:{show:false}},
+    series:[{type:'bar',data:vals.slice().reverse(),barWidth:'55%',
+      itemStyle:{borderRadius:[0,6,6,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:C.primary},{offset:1,color:C.primaryLight}])},
+      label:{show:true,position:'right',formatter:p=>'¥'+(p.value/10000).toFixed(1)+'万',fontSize:11,color:'#606266'}}]});
+})();
+
+// BILLING
+(function(){
+  const c1 = initChart('chart-billing-trend');
+  if(c1) c1.setOption({ tooltip:{trigger:'axis',formatter:tf}, legend:{data:['阿里云','Azure','K8s'],bottom:0,textStyle:{color:'#606266'}}, grid:gridOpts, xAxis:xOpts, yAxis:yOpts,
+    series:[
+      {name:'阿里云',type:'line',data:trendData.alibaba,smooth:true,lineStyle:{color:C.alibaba,width:2},itemStyle:{color:C.alibaba},symbol:'circle',symbolSize:5},
+      {name:'Azure',type:'line',data:trendData.azure,smooth:true,lineStyle:{color:C.azure,width:2},itemStyle:{color:C.azure},symbol:'circle',symbolSize:5},
+      {name:'K8s',type:'line',data:trendData.k8s,smooth:true,lineStyle:{color:C.k8s,width:2},itemStyle:{color:C.k8s},symbol:'circle',symbolSize:5},
+    ]});
+  const c2 = initChart('chart-alibaba-products');
+  if(c2) c2.setOption({ tooltip:{trigger:'item',formatter:'{b}: ¥{c} ({d}%)'}, series:[{type:'pie',radius:['40%','65%'],label:{formatter:'{b}\n{d}%',fontSize:11,color:'#606266'},
+    data:[{value:852340,name:'ECS',itemStyle:{color:'#e65c00'}},{value:415200,name:'RDS',itemStyle:{color:'#ff8533'}},{value:198420,name:'OSS',itemStyle:{color:'#ffa366'}},{value:54040,name:'其他',itemStyle:{color:'#ffcc99'}}]}]});
+  const c3 = initChart('chart-azure-products');
+  if(c3) c3.setOption({ tooltip:{trigger:'item',formatter:'{b}: ¥{c} ({d}%)'}, series:[{type:'pie',radius:['40%','65%'],label:{formatter:'{b}\n{d}%',fontSize:11,color:'#606266'},
+    data:[{value:623180,name:'VM',itemStyle:{color:'#005b9f'}},{value:245630,name:'SQL DB',itemStyle:{color:'#3399dd'}},{value:144422,name:'Storage',itemStyle:{color:'#66b5e8'}},{value:8768,name:'其他',itemStyle:{color:'#b3d9f2'}}]}]});
+})();
+
+// PREDICTION
+(function(){
+  const actual = [2680000,2550000,3060000,2910000,3150000,2847692];
+  const pred = [2847692,3020000,3125000,3380000];
+  const allM = ['4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const c1 = initChart('chart-prediction');
+  if(c1) c1.setOption({ tooltip:{trigger:'axis',formatter:tf}, legend:{data:['实际成本','预测成本','预算基线'],bottom:0,textStyle:{color:'#606266'}},
+    grid:{left:55,right:20,top:15,bottom:40}, xAxis:{type:'category',data:allM,axisLabel:{color:'#909399',fontSize:11},axisLine:{lineStyle:{color:'#e8eaed'}},axisTick:{show:false}},
+    yAxis:{type:'value',axisLabel:{formatter:v=>(v/10000).toFixed(0)+'万',color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    series:[
+      {name:'实际成本',type:'line',data:[...actual,null,null,null],smooth:true,lineStyle:{color:C.primary,width:3},itemStyle:{color:C.primary},symbol:'circle',symbolSize:7},
+      {name:'预测成本',type:'line',data:[null,null,null,null,null,actual[5],...pred.slice(1)],smooth:true,lineStyle:{color:C.warning,width:2,type:'dashed'},itemStyle:{color:C.warning},symbol:'diamond',symbolSize:8,areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(230,162,60,0.15)'},{offset:1,color:'rgba(230,162,60,0)'}])}},
+      {name:'预算基线',type:'line',data:Array(9).fill(3100000),lineStyle:{color:C.danger,width:1,type:'dotted'},itemStyle:{color:C.danger},symbol:'none'},
+    ]});
+  const c2 = initChart('chart-multi-prediction');
+  if(c2) c2.setOption({ tooltip:{trigger:'axis',formatter:tf}, legend:{data:['阿里云·实际','阿里云·预测','Azure·实际','Azure·预测'],bottom:0,textStyle:{fontSize:10,color:'#606266'}},
+    grid:{left:55,right:15,top:15,bottom:45}, xAxis:{type:'category',data:allM,axisLabel:{fontSize:10,color:'#909399'},axisLine:{lineStyle:{color:'#e8eaed'}},axisTick:{show:false}},
+    yAxis:{type:'value',axisLabel:{formatter:v=>(v/10000).toFixed(0)+'万',fontSize:10,color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    series:[
+      {name:'阿里云·实际',type:'line',data:[1350000,1280000,1420000,1380000,1450000,1520000,null,null,null],smooth:true,lineStyle:{color:'#e65c00',width:2},symbol:'circle',symbolSize:4},
+      {name:'阿里云·预测',type:'line',data:[null,null,null,null,null,1520000,1580000,1650000,1720000],smooth:true,lineStyle:{color:'#e65c00',width:2,type:'dashed'},symbol:'diamond',symbolSize:4},
+      {name:'Azure·实际',type:'line',data:[920000,880000,960000,910000,980000,1010000,null,null,null],smooth:true,lineStyle:{color:'#005b9f',width:2},symbol:'circle',symbolSize:4},
+      {name:'Azure·预测',type:'line',data:[null,null,null,null,null,1010000,1080000,1110000,1170000],smooth:true,lineStyle:{color:'#005b9f',width:2,type:'dashed'},symbol:'diamond',symbolSize:4},
+    ]});
+  const c3 = initChart('chart-accuracy');
+  if(c3) c3.setOption({ tooltip:{trigger:'axis',formatter:p=>`${p[0].name}: <strong>${p[0].value}%</strong>`},
+    grid:{left:45,right:20,top:15,bottom:30}, xAxis:{type:'category',data:['1月','2月','3月','4月','5月','6月','7月','8月','9月'],axisLabel:{fontSize:10,color:'#909399'},axisLine:{lineStyle:{color:'#e8eaed'}},axisTick:{show:false}},
+    yAxis:{type:'value',min:80,max:100,axisLabel:{formatter:'{value}%',fontSize:10,color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    series:[{type:'line',data:[89,91,88,93,90,94,92,93,92],smooth:true,lineStyle:{color:C.success,width:2},itemStyle:{color:C.success},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(103,194,58,0.15)'},{offset:1,color:'rgba(103,194,58,0)'}])},
+      markLine:{silent:true,symbol:'none',data:[{yAxis:90,label:{formatter:'90%',fontSize:10,color:'#e6a23c'},lineStyle:{color:'#e6a23c',type:'dashed'}}]}}]});
+})();
+
+// K8S
+(function(){
+  const km = ['1月','2月','3月','4月','5月','6月','7月','8月','9月'];
+  const c1 = initChart('chart-cluster-trend');
+  if(c1) c1.setOption({ tooltip:{trigger:'axis',formatter:tf}, legend:{data:['prod-hangzhou','prod-shanghai','prod-beijing','test-dev'],bottom:0,textStyle:{fontSize:11,color:'#606266'}},
+    grid:gridOpts, xAxis:{type:'category',data:km,axisLabel:{fontSize:11,color:'#909399'},axisLine:{lineStyle:{color:'#e8eaed'}},axisTick:{show:false}},
+    yAxis:{type:'value',axisLabel:{formatter:v=>(v/10000).toFixed(0)+'万',color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    color:[C.primary,C.success,C.warning,'#909399'],
+    series:[
+      {name:'prod-hangzhou',type:'line',data:[85000,88000,92000,90000,95000,98000,96000,99000,98000],smooth:true},
+      {name:'prod-shanghai',type:'line',data:[72000,75000,78000,76000,80000,82000,84000,86000,85000],smooth:true},
+      {name:'prod-beijing',type:'line',data:[60000,62000,65000,64000,68000,70000,71000,73000,72000],smooth:true},
+      {name:'test-dev',type:'line',data:[30000,32000,34000,33000,35000,36000,37000,38000,38000],smooth:true},
+    ]});
+  const ns = ['default','microservices','data-platform','monitoring','logging','ingress-nginx','ci-cd','ml-pipeline','security','backup'];
+  const nv = [65000,58000,45000,38000,32000,28000,25000,22000,18000,12000];
+  const c2 = initChart('chart-namespace');
+  if(c2) c2.setOption({ tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>`${p[0].name}: <strong>¥${p[0].value.toLocaleString()}</strong>`},
+    grid:{left:110,right:50,top:10,bottom:20}, xAxis:{type:'value',axisLabel:{formatter:v=>(v/1000).toFixed(0)+'k',color:'#909399'},splitLine:{lineStyle:{color:'#f0f2f5'}}},
+    yAxis:{type:'category',data:ns.slice().reverse(),inverse:true,axisLabel:{fontSize:11,color:'#606266'},axisLine:{show:false},axisTick:{show:false}},
+    series:[{type:'bar',data:nv.slice().reverse(),barWidth:'55%',
+      itemStyle:{borderRadius:[0,4,4,0],color:new echarts.graphic.LinearGradient(0,0,1,0,[{offset:0,color:C.primary},{offset:1,color:C.primaryLight}])},
+      label:{show:true,position:'right',formatter:p=>'¥'+(p.value/1000).toFixed(0)+'k',fontSize:10,color:'#606266'}}]});
+  const c3 = initChart('chart-resource-type');
+  if(c3) c3.setOption({ tooltip:{trigger:'item',formatter:'{b}: ¥{c} ({d}%)'}, series:[{type:'pie',radius:['45%','70%'],label:{formatter:'{b}\n¥{c}',fontSize:11,color:'#606266'},
+    data:[{value:198000,name:'Compute',itemStyle:{color:C.primary}},{value:145000,name:'Memory',itemStyle:{color:C.primaryLight}},{value:82000,name:'Storage',itemStyle:{color:'#8099c4'}},{value:61300,name:'Network',itemStyle:{color:'#b3c2dc'}}]}]});
+})();
+
+// NAVIGATION
+const titles = {
+  dashboard:'总览仪表盘',billing:'账单分析',monthly:'月度账单',prediction:'成本预测',
+  optimization:'成本优化',budget:'预算管理',app:'应用总览',product:'产品管理',
+  k8s:'K8s 成本分析',cloudAccount:'云账号管理',cloudSecret:'云凭证管理',
+  alert:'告警管理',autoTagging:'自动标签规则',user:'用户管理',role:'角色管理',menu:'菜单管理',
+};
+
+// el-menu click handling
+document.querySelectorAll('.el-menu-item[data-section]').forEach(item => {
+  item.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const section = this.dataset.section;
+    // Update active menu item
+    document.querySelectorAll('.el-menu-item').forEach(m => m.classList.remove('is-active'));
+    this.classList.add('is-active');
+    // Update parent sub-menu (open it)
+    const subMenu = this.closest('.el-sub-menu');
+    if (subMenu) subMenu.classList.add('is-opened');
+    // Switch section
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    const target = document.getElementById('section-' + section);
+    if (target) target.classList.add('active');
+    // Update breadcrumb & tagsview
+    document.getElementById('breadcrumb-title').textContent = titles[section] || section;
+    const tv = document.querySelector('.tagsview-item');
+    if (tv) tv.innerHTML = (titles[section] || section) + '<span class="tagsview-item-close">×</span>';
+    // Resize charts
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
+  });
+});
+
+// Sub-menu toggle
+document.querySelectorAll('.el-sub-menu').forEach(sub => {
+  sub.addEventListener('click', function(e) {
+    if (e.target.closest('.el-menu-item')) return;
+    this.classList.toggle('is-opened');
+  });
+});
+// Default: open the first sub-menu (成本分析) since it contains active item
+document.querySelector('.el-sub-menu').classList.add('is-opened');
+</script>
+
+</body>
+</html>
